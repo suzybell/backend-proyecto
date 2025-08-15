@@ -15,16 +15,27 @@ app.get("/usuarios", (req, res) => {
   });
 });
 
-// Endpoint POST para login
+// Endpoint POST para login real con la base de datos
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
-  // Aquí va tu lógica real con la base de datos
-  if (username === "admin" && password === "1234") {
-    res.status(200).json({ message: "Login exitoso" });
-  } else {
-    res.status(401).json({ message: "Usuario o contraseña incorrecta" });
-  }
+  // Consulta SQL para verificar usuario y contraseña
+  const query = "SELECT * FROM usuarios WHERE username = ? AND password = ?";
+
+  db.query(query, [username, password], (err, results) => {
+    if (err) {
+      console.error("❌ Error al consultar usuarios:", err);
+      return res.status(500).json({ message: "Error en el servidor" });
+    }
+
+    if (results.length > 0) {
+      // Usuario encontrado
+      res.status(200).json({ message: "Login exitoso", user: results[0] });
+    } else {
+      // Usuario no encontrado
+      res.status(401).json({ message: "Usuario o contraseña incorrecta" });
+    }
+  });
 });
 
 // Endpoint raíz para test simple
