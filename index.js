@@ -40,7 +40,7 @@ app.post("/login", (req, res) => {
 
 // Endpoint raíz para test simple
 app.get("/", (req, res) => {
-  res.send("✅ Backend funcionando correctamente!");
+  res.json({ status: "ok", message: "✅ Backend funcionando correctamente!" });
 });
 
 const PORT = process.env.PORT || 8080;
