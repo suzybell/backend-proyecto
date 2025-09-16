@@ -18,4 +18,11 @@ connection.connect((err) => {
   console.log("✅ Conexión a MySQL exitosa!");
 });
 
+// PRUEBA RÁPIDA
+  connection.query("SELECT 1 + 1 AS resultado", (err, results) => {
+    if (err) console.error("❌ Error de prueba:", err);
+    else console.log("✅ Prueba de conexión OK:", results);
+  });
+});
+
 module.exports = connection;
