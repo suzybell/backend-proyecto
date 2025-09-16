@@ -72,6 +72,19 @@ app.post("/register", (req, res) => {
 });
 
 
+// Ver últimos usuarios registrados
+app.get("/usuarios/latest", (req, res) => {
+  db.query("SELECT * FROM usuarios ORDER BY id DESC LIMIT 5", (err, results) => {
+    if (err) {
+      console.error("❌ Error al obtener usuarios:", err);
+      return res.status(500).json({ message: "Error al obtener usuarios" });
+    }
+    res.json(results);
+  });
+});
+
+
+
 
 // Endpoint raíz para test simple
 app.get("/", (req, res) => {
