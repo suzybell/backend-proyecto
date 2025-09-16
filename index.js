@@ -45,16 +45,17 @@ app.post("/login", (req, res) => {
   });
 });
 
+
 // Endpoint para registrar un nuevo usuario
 app.post("/register", (req, res) => {
-  const { usuario, contrasena } = req.body;
+  const { nombre, usuario, contrasena } = req.body;
 
-  if (!usuario || !contrasena) {
+  if (!nombre || !usuario || !contrasena) {
     return res.status(400).json({ message: "Faltan datos" });
   }
 
-  const query = "INSERT INTO usuarios (usuario, contrasena) VALUES (?, ?)";
-  db.query(query, [usuario, contrasena], (err, result) => {
+  const query = "INSERT INTO usuarios (nombre, usuario, contrasena) VALUES (?, ?, ?)";
+  db.query(query, [nombre, usuario, contrasena], (err, result) => {
     if (err) {
       console.error("❌ Error al registrar:", err);
       return res.status(500).json({ message: "Error al registrar usuario" });
@@ -63,6 +64,7 @@ app.post("/register", (req, res) => {
     return res.status(201).json({ message: "✅ Usuario registrado con éxito" });
   });
 });
+
 
 
 // Endpoint raíz para test simple
