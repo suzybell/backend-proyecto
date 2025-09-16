@@ -48,6 +48,7 @@ app.post("/login", (req, res) => {
 
 // Endpoint para registrar un nuevo usuario
 app.post("/register", (req, res) => {
+   console.log("📩 Datos recibidos en /register:", req.body);
   const { nombre, usuario, contrasena } = req.body;
 
   if (!nombre || !usuario || !contrasena) {
