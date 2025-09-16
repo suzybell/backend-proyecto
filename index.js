@@ -1,12 +1,14 @@
-const cors = require("cors");
-app.use(cors()); 
-
-
 require("dotenv").config();
 const express = require("express");
-const app = express();
+const cors = require("cors");
 const db = require("./db"); // tu conexión MySQL
 
+const app = express();
+
+// Habilitar CORS
+app.use(cors());
+
+// Middleware para leer JSON
 app.use(express.json());
 
 // Endpoint GET para usuarios
@@ -42,7 +44,6 @@ app.post("/login", (req, res) => {
     }
   });
 });
-
 
 // Endpoint raíz para test simple
 app.get("/", (req, res) => {
