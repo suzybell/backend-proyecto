@@ -8,7 +8,7 @@ const app = express();
 // Habilitar CORS
 
 const corsOptions = {
-  origin: "http://127.0.0.1:5500", // aquí tu frontend
+  origin: "*", // aquí tu frontend
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 };
