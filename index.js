@@ -6,7 +6,16 @@ const db = require("./db"); // tu conexión MySQL
 const app = express();
 
 // Habilitar CORS
-app.use(cors());
+
+const corsOptions = {
+  origin: "http://127.0.0.1:5500", // aquí tu frontend
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+};
+
+app.use(cors(corsOptions));
+
+
 
 // Middleware para leer JSON
 app.use(express.json());
