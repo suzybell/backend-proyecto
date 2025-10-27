@@ -35,6 +35,8 @@ app.get("/usuarios", (req, res) => {
 app.post("/login", (req, res) => {
   const { usuario, contrasena } = req.body;
 
+  console.log("📩 Datos recibidos:", req.body); // verifica si llega vacío
+
   if (!usuario || !contrasena) {
     return res.status(400).json({ message: "Faltan datos" });
   }
