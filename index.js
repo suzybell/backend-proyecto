@@ -95,6 +95,19 @@ app.get("/usuarios/latest", async (req, res) => {
   }
 });
 
+
+// ✅ ENDPOINT GET LISTADO DE PRODUCTOS
+app.get("/productos", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM productos"); 
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error al obtener productos:", err);
+    res.status(500).json({ message: "Error al obtener productos" });
+  }
+});
+
+
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🚀 Servidor funcionando en el puerto ${PORT}`));
 
