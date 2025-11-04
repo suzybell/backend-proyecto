@@ -107,6 +107,34 @@ app.get("/productos", async (req, res) => {
   }
 });
 
+// ✅ Registrar nuevo producto
+app.post("/productos", async (req, res) => {
+  const { nombre, descripcion, precio, stock, imagen } = req.body;
+
+  // Validación básica
+  if (!nombre || !precio) {
+    return res.status(400).json({ message: "❌ Nombre y precio son obligatorios" });
+  }
+
+  try {
+    const [result] = await db.query(
+      "INSERT INTO productos (nombre, descripcion, precio, stock, imagen) VALUES (?, ?, ?, ?, ?)",
+      [nombre, descripcion, precio, stock ?? 0, imagen]
+    );
+
+    console.log("✅ Producto registrado con ID:", result.insertId);
+
+    res.status(201).json({ 
+      message: "✅ Producto registrado con éxito",
+      id: result.insertId
+    });
+
+  } catch (err) {
+    console.error("❌ Error al registrar producto:", err);
+    res.status(500).json({ message: "Error al registrar producto" });
+  }
+});
+
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🚀 Servidor funcionando en el puerto ${PORT}`));
