@@ -116,6 +116,18 @@ app.post("/productos", async (req, res) => {
     return res.status(400).json({ message: "❌ Nombre y precio son obligatorios" });
   }
 
+// ✅ Validar que el precio sea numérico y sin separadores de miles
+  // Acepta: 10000, 10000.50
+  // Rechaza: 10.000, $10000, 10,000
+  const precioLimpio = String(precio);
+
+  if (!/^\d+(\.\d{1,2})?$/.test(precioLimpio)) {
+    return res.status(400).json({
+      message: "❌ El precio debe ser un número sin puntos ni símbolos. Ejemplo: 10000 o 10000.50"
+    });
+  }
+
+
   try {
     const [result] = await db.query(
       "INSERT INTO productos (nombre, descripcion, precio, stock, imagen) VALUES (?, ?, ?, ?, ?)",
