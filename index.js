@@ -95,7 +95,6 @@ app.get("/usuarios/latest", async (req, res) => {
   }
 });
 
-
 // ✅ ENDPOINT GET LISTADO DE PRODUCTOS
 app.get("/productos", async (req, res) => {
   try {
@@ -116,22 +115,25 @@ app.post("/productos", async (req, res) => {
     return res.status(400).json({ message: "❌ Nombre y precio son obligatorios" });
   }
 
-// ✅ Validar que el precio sea numérico y sin separadores de miles
+  // ✅ Validar formato de precio correcto
+  const precioTexto = String(precio); // Asegura que sea string
+
   // Acepta: 10000, 10000.50
   // Rechaza: 10.000, $10000, 10,000
-  const precioLimpio = String(precio);
-
-  if (!/^\d+(\.\d{1,2})?$/.test(precioLimpio)) {
+  if (!/^\d+(\.\d{1,2})?$/.test(precioTexto)) {
     return res.status(400).json({
       message: "❌ El precio debe ser un número sin puntos ni símbolos. Ejemplo: 10000 o 10000.50"
     });
   }
 
+  // ✅ Si viene con puntos de miles, eliminarlos
+  const precioSinSeparadores = precioTexto.replace(/\./g, '');
+  const precioFinal = parseFloat(precioSinSeparadores);
 
   try {
     const [result] = await db.query(
       "INSERT INTO productos (nombre, descripcion, precio, stock, imagen) VALUES (?, ?, ?, ?, ?)",
-      [nombre, descripcion, precio, stock ?? 0, imagen]
+      [nombre, descripcion, precioFinal, stock ?? 0, imagen]
     );
 
     console.log("✅ Producto registrado con ID:", result.insertId);
@@ -147,7 +149,5 @@ app.post("/productos", async (req, res) => {
   }
 });
 
-
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🚀 Servidor funcionando en el puerto ${PORT}`));
-
