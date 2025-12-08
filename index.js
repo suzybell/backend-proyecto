@@ -297,6 +297,34 @@ app.put("/carrito/actualizar", async (req, res) => {
   }
 });
 
+// =============================
+//   CARRITO: Eliminar producto
+// =============================
+app.delete("/carrito/eliminar", async (req, res) => {
+  const { usuario_id, producto_id } = req.body;
+
+  if (!usuario_id || !producto_id) {
+    return res.status(400).json({ message: "Datos incompletos" });
+  }
+
+  try {
+    const [result] = await db.query(
+      "DELETE FROM carrito WHERE usuario_id = ? AND producto_id = ?",
+      [usuario_id, producto_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Producto no estaba en el carrito" });
+    }
+
+    res.json({ message: "Producto eliminado del carrito" });
+
+  } catch (err) {
+    console.error("❌ Error al eliminar del carrito:", err);
+    res.status(500).json({ message: "Error al eliminar producto del carrito" });
+  }
+});
+
 
 // =============================
 // INICIAR SERVIDOR
