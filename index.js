@@ -178,9 +178,13 @@ app.delete("/productos/:id", async (req, res) => {
 //   CARRITO: Agregar producto
 // =============================
 app.post("/carrito/agregar", async (req, res) => {
+  console.log("🎯 ENDPOINT /carrito/agregar LLAMADO");
+  console.log("Body recibido:", req.body);
+  
   const { usuario_id, producto_id, cantidad } = req.body;
 
   if (!usuario_id || !producto_id) {
+    console.log("❌ Faltan datos: usuario_id o producto_id");
     return res.status(400).json({ message: "usuario_id y producto_id son obligatorios" });
   }
 
