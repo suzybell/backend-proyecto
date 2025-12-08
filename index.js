@@ -154,6 +154,27 @@ app.delete("/productos/:id", async (req, res) => {
   }
 });
 
+// ===============================
+// Actualizar producto
+// ===============================
+app.put("/productos/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nombre, descripcion, precio, stock, imagen, categoria } = req.body;
+
+  try {
+    await db.query(
+      "UPDATE productos SET nombre=?, descripcion=?, precio=?, stock=?, imagen=?, categoria=? WHERE id=?",
+      [nombre, descripcion, precio, stock, imagen, categoria, id]
+    );
+
+    res.json({ message: "Producto actualizado correctamente" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error al actualizar producto" });
+  }
+});
+
 
 // =============================
 //     INICIAR SERVIDOR
