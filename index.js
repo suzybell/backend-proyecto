@@ -112,13 +112,14 @@ app.get("/productos/:id", async (req, res) => {
 
 // POST crear producto
 app.post("/productos", async (req, res) => {
-  const { nombre, descripcion, precio, stock, imagen, categoria } = req.body;
+  const { nombre, descripcion, precio, precio_oferta, stock, imagen, categoria } = req.body;
 
   if (!nombre || !precio) {
     return res.status(400).json({ message: "Nombre y precio son obligatorios" });
   }
 
   const precioTexto = String(precio);
+
   if (!/^\d+(\.\d{1,2})?$/.test(precioTexto)) {
     return res.status(400).json({
       message: "El precio debe ser un número válido. Ej: 10000 o 10000.50"
@@ -129,8 +130,8 @@ app.post("/productos", async (req, res) => {
 
   try {
     const [result] = await db.query(
-      "INSERT INTO productos (nombre, descripcion, precio, stock, imagen, categoria) VALUES (?, ?, ?, ?, ?, ?)",
-      [nombre, descripcion, precioFinal, stock ?? 0, imagen, categoria || "General"]
+      "INSERT INTO productos (nombre, descripcion, precio, precio_oferta, stock, imagen, categoria) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [nombre, descripcion, precioFinal, precio_oferta || null, stock ?? 0, imagen, categoria || "General"]
     );
 
     res.status(201).json({ message: "Producto registrado", id: result.insertId });
@@ -140,15 +141,16 @@ app.post("/productos", async (req, res) => {
   }
 });
 
+
 // PUT actualizar producto
 app.put("/productos/:id", async (req, res) => {
   const { id } = req.params;
-  const { nombre, descripcion, precio, stock, imagen, categoria } = req.body;
+  const { nombre, descripcion, precio, precio_oferta, stock, imagen, categoria } = req.body;
 
   try {
     await db.query(
-      "UPDATE productos SET nombre=?, descripcion=?, precio=?, stock=?, imagen=?, categoria=? WHERE id=?",
-      [nombre, descripcion, precio, stock, imagen, categoria, id]
+      "UPDATE productos SET nombre=?, descripcion=?, precio=?, precio_oferta=?, stock=?, imagen=?, categoria=? WHERE id=?",
+      [nombre, descripcion, precio, precio_oferta || null, stock, imagen, categoria, id]
     );
 
     res.json({ message: "Producto actualizado" });
@@ -157,6 +159,7 @@ app.put("/productos/:id", async (req, res) => {
     res.status(500).json({ message: "Error al actualizar producto" });
   }
 });
+
 
 // DELETE eliminar producto
 app.delete("/productos/:id", async (req, res) => {
