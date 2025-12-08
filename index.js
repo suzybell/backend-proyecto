@@ -217,6 +217,56 @@ app.post("/carrito/agregar", async (req, res) => {
 
 
 // =============================
+//   CARRITO: Obtener carrito por usuario
+// =============================
+app.get("/carrito/:usuario_id", async (req, res) => {
+  const { usuario_id } = req.params;
+
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        c.id AS carrito_id,
+        c.cantidad,
+        p.id AS producto_id,
+        p.nombre,
+        p.precio,
+        p.precio_oferta,
+        p.imagen
+      FROM carrito c
+      INNER JOIN productos p ON c.producto_id = p.id
+      WHERE c.usuario_id = ?
+    `, [usuario_id]);
+
+    // Calcular totales
+    const carrito = rows.map(item => {
+      const precioFinal = item.precio_oferta && item.precio_oferta > 0
+        ? item.precio_oferta
+        : item.precio;
+
+      return {
+        carrito_id: item.carrito_id,
+        producto_id: item.producto_id,
+        nombre: item.nombre,
+        imagen: item.imagen,
+        cantidad: item.cantidad,
+        precio_unitario: precioFinal,
+        total_producto: precioFinal * item.cantidad
+      };
+    });
+
+    // Total general
+    const total_general = carrito.reduce((sum, item) => sum + item.total_producto, 0);
+
+    res.json({ carrito, total_general });
+
+  } catch (err) {
+    console.error("❌ Error al obtener carrito:", err);
+    res.status(500).json({ message: "Error al obtener carrito" });
+  }
+});
+
+
+// =============================
 // INICIAR SERVIDOR
 // =============================
 const PORT = process.env.PORT || 8080;
