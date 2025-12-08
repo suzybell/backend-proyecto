@@ -175,6 +175,48 @@ app.delete("/productos/:id", async (req, res) => {
 });
 
 // =============================
+//   CARRITO: Agregar producto
+// =============================
+app.post("/carrito/agregar", async (req, res) => {
+  const { usuario_id, producto_id, cantidad } = req.body;
+
+  if (!usuario_id || !producto_id) {
+    return res.status(400).json({ message: "usuario_id y producto_id son obligatorios" });
+  }
+
+  try {
+    // 1️⃣ Verificar si el producto YA está en el carrito
+    const [existe] = await db.query(
+      "SELECT * FROM carrito WHERE usuario_id = ? AND producto_id = ?",
+      [usuario_id, producto_id]
+    );
+
+    if (existe.length > 0) {
+      // 2️⃣ Si ya existe, aumentar cantidad
+      await db.query(
+        "UPDATE carrito SET cantidad = cantidad + ? WHERE usuario_id = ? AND producto_id = ?",
+        [cantidad ?? 1, usuario_id, producto_id]
+      );
+
+      return res.json({ message: "Cantidad actualizada en el carrito" });
+    }
+
+    // 3️⃣ Si NO existe, insertar producto
+    await db.query(
+      "INSERT INTO carrito (usuario_id, producto_id, cantidad) VALUES (?, ?, ?)",
+      [usuario_id, producto_id, cantidad ?? 1]
+    );
+
+    res.json({ message: "Producto agregado al carrito" });
+
+  } catch (err) {
+    console.error("❌ Error al agregar al carrito:", err);
+    res.status(500).json({ message: "Error al agregar al carrito" });
+  }
+});
+
+
+// =============================
 // INICIAR SERVIDOR
 // =============================
 const PORT = process.env.PORT || 8080;
