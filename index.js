@@ -354,6 +354,265 @@ app.delete("/carrito/vaciar", async (req, res) => {
 
 
 // =============================
+//     CHECKOUT & PAGOS
+// =============================
+
+// 1. Obtener métodos de pago disponibles
+app.get("/metodos-pago", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM metodos_pago");
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error al obtener métodos de pago:", err);
+    res.status(500).json({ message: "Error al obtener métodos de pago" });
+  }
+});
+
+// 2. Obtener detalles de una orden específica
+app.get("/orden/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Obtener la orden principal
+    const [orden] = await db.query(`
+      SELECT o.*, mp.nombre as metodo_pago_nombre
+      FROM ordenes o
+      LEFT JOIN metodos_pago mp ON o.metodo_pago_id = mp.id
+      WHERE o.id = ?
+    `, [id]);
+
+    if (orden.length === 0) {
+      return res.status(404).json({ message: "Orden no encontrada" });
+    }
+
+    // Obtener los productos de la orden
+    const [detalles] = await db.query(`
+      SELECT 
+        do.*,
+        p.nombre as producto_nombre,
+        p.imagen
+      FROM detalle_orden do
+      JOIN productos p ON do.producto_id = p.id
+      WHERE do.orden_id = ?
+    `, [id]);
+
+    res.json({
+      orden: orden[0],
+      detalles
+    });
+
+  } catch (err) {
+    console.error("❌ Error al obtener orden:", err);
+    res.status(500).json({ message: "Error al obtener orden" });
+  }
+});
+
+// 3. Procesar checkout (EL MÁS IMPORTANTE)
+app.post("/checkout", async (req, res) => {
+  const { usuario_id, direccion_envio, ciudad_envio, telefono_contacto, metodo_pago_id } = req.body;
+
+  // Validar campos obligatorios
+  if (!usuario_id || !direccion_envio || !ciudad_envio || !telefono_contacto || !metodo_pago_id) {
+    return res.status(400).json({ 
+      message: "❌ Todos los campos son obligatorios" 
+    });
+  }
+
+  try {
+    // 1. Obtener conexión de la base de datos
+    const connection = await db.getConnection();
+    
+    // 2. Iniciar transacción
+    await connection.beginTransaction();
+
+    // 3. Obtener carrito del usuario con información completa
+    const [carrito] = await connection.query(`
+      SELECT 
+        c.producto_id,
+        c.cantidad,
+        p.nombre,
+        p.precio,
+        p.stock
+      FROM carrito c
+      JOIN productos p ON c.producto_id = p.id
+      WHERE c.usuario_id = ?
+    `, [usuario_id]);
+
+    // 4. Validar que el carrito no esté vacío
+    if (carrito.length === 0) {
+      await connection.rollback();
+      connection.release();
+      return res.status(400).json({ 
+        message: "❌ El carrito está vacío" 
+      });
+    }
+
+    // 5. Validar stock disponible
+    for (const item of carrito) {
+      if (item.cantidad > item.stock) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ 
+          message: `❌ Stock insuficiente para: ${item.nombre}. Disponible: ${item.stock}` 
+        });
+      }
+    }
+
+    // 6. Calcular el total
+    const total = carrito.reduce((sum, item) => {
+      return sum + (parseFloat(item.precio) * item.cantidad);
+    }, 0);
+
+    // 7. Crear la orden principal
+    const [resultOrden] = await connection.query(`
+      INSERT INTO ordenes (
+        usuario_id, 
+        total, 
+        direccion_envio, 
+        ciudad_envio, 
+        telefono_contacto, 
+        metodo_pago_id
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `, [usuario_id, total, direccion_envio, ciudad_envio, telefono_contacto, metodo_pago_id]);
+
+    const ordenId = resultOrden.insertId;
+
+    // 8. Guardar productos en detalle_orden y actualizar stock
+    for (const item of carrito) {
+      const subtotal = parseFloat(item.precio) * item.cantidad;
+      
+      // Insertar en detalle_orden
+      await connection.query(`
+        INSERT INTO detalle_orden (
+          orden_id, 
+          producto_id, 
+          cantidad, 
+          precio_unitario, 
+          subtotal
+        ) VALUES (?, ?, ?, ?, ?)
+      `, [ordenId, item.producto_id, item.cantidad, item.precio, subtotal]);
+
+      // Actualizar stock
+      await connection.query(`
+        UPDATE productos 
+        SET stock = stock - ? 
+        WHERE id = ?
+      `, [item.cantidad, item.producto_id]);
+    }
+
+    // 9. Vaciar el carrito
+    await connection.query('DELETE FROM carrito WHERE usuario_id = ?', [usuario_id]);
+
+    // 10. Confirmar transacción
+    await connection.commit();
+    connection.release();
+
+    // 11. Obtener datos del usuario para el correo
+    const [usuarios] = await db.query(
+      "SELECT email, nombre FROM usuarios WHERE id = ?", 
+      [usuario_id]
+    );
+    
+    const usuario = usuarios[0];
+
+    // 12. Obtener método de pago
+    const [metodosPago] = await db.query(
+      "SELECT nombre FROM metodos_pago WHERE id = ?", 
+      [metodo_pago_id]
+    );
+    
+    const metodoPagoNombre = metodosPago[0]?.nombre || 'No especificado';
+
+    // 13. Enviar correo de confirmación (si hay email configurado)
+    if (process.env.EMAIL_USER && usuario && usuario.email) {
+      try {
+        const { enviarCorreo } = require('./utils/mailer');
+        
+        const htmlCorreo = `
+          <h1>¡Gracias por tu compra, ${usuario.nombre}!</h1>
+          <p>Tu pedido <strong>#${ordenId}</strong> ha sido recibido y está siendo procesado.</p>
+          <h2>Resumen del Pedido:</h2>
+          <ul>
+            ${carrito.map(item => `
+              <li>${item.nombre} - ${item.cantidad} x $${item.precio.toLocaleString()}</li>
+            `).join('')}
+          </ul>
+          <p><strong>Total: $${total.toLocaleString()}</strong></p>
+          <p>Método de pago: ${metodoPagoNombre}</p>
+          <p>Dirección de envío: ${direccion_envio}, ${ciudad_envio}</p>
+          <p>Teléfono de contacto: ${telefono_contacto}</p>
+          <p>Te contactaremos si hay algún inconveniente con tu pedido.</p>
+        `;
+
+        await enviarCorreo({
+          to: usuario.email,
+          subject: `✅ Confirmación de Pedido #${ordenId}`,
+          html: htmlCorreo
+        });
+
+        console.log(`📧 Correo enviado a ${usuario.email}`);
+        
+      } catch (emailError) {
+        console.error("⚠️ Error al enviar correo (pero la orden se creó):", emailError);
+        // No retornamos error porque la orden ya se creó exitosamente
+      }
+    }
+
+    // 14. Responder con éxito
+    res.status(201).json({
+      message: "✅ Orden creada exitosamente",
+      orden_id: ordenId,
+      total: total,
+      detalles: carrito.map(item => ({
+        producto: item.nombre,
+        cantidad: item.cantidad,
+        precio: item.precio
+      }))
+    });
+
+  } catch (err) {
+    console.error("❌ Error en checkout:", err);
+    
+    // Revertir cambios si hubo error
+    if (connection) {
+      await connection.rollback();
+      connection.release();
+    }
+    
+    res.status(500).json({ 
+      message: "Error al procesar la compra",
+      error: err.message 
+    });
+  }
+});
+
+// 4. Obtener órdenes de un usuario
+app.get("/ordenes/usuario/:usuario_id", async (req, res) => {
+  const { usuario_id } = req.params;
+
+  try {
+    const [ordenes] = await db.query(`
+      SELECT 
+        o.*,
+        mp.nombre as metodo_pago_nombre,
+        COUNT(do.id) as total_productos
+      FROM ordenes o
+      LEFT JOIN metodos_pago mp ON o.metodo_pago_id = mp.id
+      LEFT JOIN detalle_orden do ON o.id = do.orden_id
+      WHERE o.usuario_id = ?
+      GROUP BY o.id
+      ORDER BY o.fecha DESC
+    `, [usuario_id]);
+
+    res.json(ordenes);
+
+  } catch (err) {
+    console.error("❌ Error al obtener órdenes:", err);
+    res.status(500).json({ message: "Error al obtener órdenes" });
+  }
+});
+
+// =============================
 // INICIAR SERVIDOR
 // =============================
 const PORT = process.env.PORT || 8080;
