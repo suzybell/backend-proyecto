@@ -352,7 +352,6 @@ app.delete("/carrito/vaciar", async (req, res) => {
   }
 });
 
-
 // =============================
 //     CHECKOUT & PAGOS
 // =============================
@@ -407,7 +406,7 @@ app.get("/orden/:id", async (req, res) => {
   }
 });
 
-// 3. Procesar checkout (EL MÁS IMPORTANTE)
+// 3. Procesar checkout (VERSIÓN CORREGIDA - SIN EMAIL)
 app.post("/checkout", async (req, res) => {
   const { usuario_id, direccion_envio, ciudad_envio, telefono_contacto, metodo_pago_id } = req.body;
 
@@ -418,9 +417,11 @@ app.post("/checkout", async (req, res) => {
     });
   }
 
+  let connection; // Declarar connection fuera del try para acceso en catch
+
   try {
     // 1. Obtener conexión de la base de datos
-    const connection = await db.getConnection();
+    connection = await db.getConnection();
     
     // 2. Iniciar transacción
     await connection.beginTransaction();
@@ -507,13 +508,13 @@ app.post("/checkout", async (req, res) => {
     await connection.commit();
     connection.release();
 
-    // 11. Obtener datos del usuario para el correo
+    // 11. Obtener nombre del usuario (SOLO nombre, NO email)
     const [usuarios] = await db.query(
-      "SELECT email, nombre FROM usuarios WHERE id = ?", 
+      "SELECT nombre FROM usuarios WHERE id = ?", 
       [usuario_id]
     );
     
-    const usuario = usuarios[0];
+    const usuarioNombre = usuarios[0]?.nombre || 'Cliente';
 
     // 12. Obtener método de pago
     const [metodosPago] = await db.query(
@@ -523,63 +524,64 @@ app.post("/checkout", async (req, res) => {
     
     const metodoPagoNombre = metodosPago[0]?.nombre || 'No especificado';
 
-    // 13. Enviar correo de confirmación (si hay email configurado)
-    if (process.env.EMAIL_USER && usuario && usuario.email) {
-      try {
-        const { enviarCorreo } = require('./utils/mailer');
-        
-        const htmlCorreo = `
-          <h1>¡Gracias por tu compra, ${usuario.nombre}!</h1>
-          <p>Tu pedido <strong>#${ordenId}</strong> ha sido recibido y está siendo procesado.</p>
-          <h2>Resumen del Pedido:</h2>
-          <ul>
-            ${carrito.map(item => `
-              <li>${item.nombre} - ${item.cantidad} x $${item.precio.toLocaleString()}</li>
-            `).join('')}
-          </ul>
-          <p><strong>Total: $${total.toLocaleString()}</strong></p>
-          <p>Método de pago: ${metodoPagoNombre}</p>
-          <p>Dirección de envío: ${direccion_envio}, ${ciudad_envio}</p>
-          <p>Teléfono de contacto: ${telefono_contacto}</p>
-          <p>Te contactaremos si hay algún inconveniente con tu pedido.</p>
-        `;
-
-        await enviarCorreo({
-          to: usuario.email,
-          subject: `✅ Confirmación de Pedido #${ordenId}`,
-          html: htmlCorreo
-        });
-
-        console.log(`📧 Correo enviado a ${usuario.email}`);
-        
-      } catch (emailError) {
-        console.error("⚠️ Error al enviar correo (pero la orden se creó):", emailError);
-        // No retornamos error porque la orden ya se creó exitosamente
-      }
-    }
+    // 13. MOSTRAR EN CONSOLA (simulación de correo para proyecto académico)
+    console.log("\n" + "=".repeat(60));
+    console.log("🎉 CHECKOUT COMPLETADO - Orden #" + ordenId);
+    console.log("=".repeat(60));
+    console.log("📋 RESUMEN DE LA COMPRA");
+    console.log("👤 Cliente: " + usuarioNombre);
+    console.log("💰 Total: $" + total.toLocaleString('es-CO'));
+    console.log("📍 Dirección: " + direccion_envio + ", " + ciudad_envio);
+    console.log("📞 Teléfono: " + telefono_contacto);
+    console.log("💳 Método de pago: " + metodoPagoNombre);
+    console.log("\n🛒 Productos comprados:");
+    
+    carrito.forEach((item, index) => {
+      console.log(`   ${index + 1}. ${item.nombre} - ${item.cantidad} x $${item.precio.toLocaleString('es-CO')} = $${(item.precio * item.cantidad).toLocaleString('es-CO')}`);
+    });
+    
+    console.log("=".repeat(60));
+    console.log("✅ Para fines académicos: correo simulado exitosamente");
+    console.log("=".repeat(60) + "\n");
 
     // 14. Responder con éxito
     res.status(201).json({
-      message: "✅ Orden creada exitosamente",
-      orden_id: ordenId,
-      total: total,
-      detalles: carrito.map(item => ({
-        producto: item.nombre,
+      success: true,
+      message: "✅ Compra realizada exitosamente",
+      orden: {
+        id: ordenId,
+        total: total,
+        fecha: new Date().toISOString(),
+        direccion_envio: direccion_envio,
+        ciudad_envio: ciudad_envio,
+        telefono_contacto: telefono_contacto,
+        metodo_pago: metodoPagoNombre
+      },
+      productos: carrito.map(item => ({
+        id: item.producto_id,
+        nombre: item.nombre,
         cantidad: item.cantidad,
-        precio: item.precio
-      }))
+        precio_unitario: item.precio,
+        subtotal: item.precio * item.cantidad
+      })),
+      nota: "Correo de confirmación simulado para proyecto académico"
     });
 
   } catch (err) {
-    console.error("❌ Error en checkout:", err);
+    console.error("❌ Error en checkout:", err.message);
     
     // Revertir cambios si hubo error
-    if (connection) {
-      await connection.rollback();
-      connection.release();
+    try {
+      if (connection) {
+        await connection.rollback();
+        connection.release();
+      }
+    } catch (rollbackErr) {
+      console.error("Error en rollback:", rollbackErr.message);
     }
     
     res.status(500).json({ 
+      success: false,
       message: "Error al procesar la compra",
       error: err.message 
     });
