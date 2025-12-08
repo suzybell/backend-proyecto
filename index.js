@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const db = require("./db"); // tu conexión MySQL con mysql2/promise
+const db = require("./db"); // conexión MySQL con mysql2/promise
 
 const app = express();
 
@@ -15,12 +15,19 @@ app.use(cors({
 // Middleware para leer JSON
 app.use(express.json());
 
-// ✅ Ruta para probar el backend
+// =============================
+//     PRUEBA DEL BACKEND
+// =============================
 app.get("/", (req, res) => {
   res.json({ status: "ok", message: "✅ Backend funcionando correctamente!" });
 });
 
-// ✅ Obtener todos los usuarios
+
+// =============================
+//     USUARIOS
+// =============================
+
+// Obtener todos los usuarios
 app.get("/usuarios", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM usuarios");
@@ -31,41 +38,35 @@ app.get("/usuarios", async (req, res) => {
   }
 });
 
-// ✅ Login con MySQL
+// Login
 app.post("/login", async (req, res) => {
   const { usuario, contrasena } = req.body;
-  console.log("📩 Datos recibidos:", req.body);
 
   if (!usuario || !contrasena) {
     return res.status(400).json({ message: "❌ Faltan datos" });
   }
 
   try {
-    console.log("🔍 Ejecutando consulta en MySQL...");
     const [rows] = await db.query(
       "SELECT * FROM usuarios WHERE usuario = ? AND contrasena = ?",
       [usuario, contrasena]
     );
-    console.log("✅ Consulta ejecutada, resultado:", rows);
 
     if (rows.length > 0) {
-      console.log("✅ Usuario autenticado:", usuario);
       return res.status(200).json({ message: "✅ Login exitoso" });
     } else {
-      console.log("❌ Credenciales inválidas para:", usuario);
       return res.status(401).json({ message: "❌ Credenciales inválidas" });
     }
 
   } catch (err) {
-    console.error("⚠️ Error en la consulta:", err);
+    console.error("⚠️ Error:", err);
     return res.status(500).json({ message: "Error interno del servidor" });
   }
 });
 
-// ✅ Registrar nuevo usuario
+// Registrar nuevo usuario
 app.post("/register", async (req, res) => {
   const { nombre, usuario, contrasena } = req.body;
-  console.log("📩 Datos recibidos en /register:", req.body);
 
   if (!nombre || !usuario || !contrasena) {
     return res.status(400).json({ message: "❌ Faltan datos" });
@@ -76,29 +77,24 @@ app.post("/register", async (req, res) => {
       "INSERT INTO usuarios (nombre, usuario, contrasena) VALUES (?, ?, ?)",
       [nombre, usuario, contrasena]
     );
-    console.log("✅ Usuario insertado con ID:", result.insertId);
-    res.status(201).json({ message: "✅ Usuario registrado con éxito", id: result.insertId });
+
+    res.status(201).json({ message: "Usuario registrado con éxito", id: result.insertId });
+
   } catch (err) {
     console.error("❌ Error al registrar usuario:", err);
     res.status(500).json({ message: "Error al registrar usuario" });
   }
 });
 
-// ✅ Últimos usuarios
-app.get("/usuarios/latest", async (req, res) => {
-  try {
-    const [rows] = await db.query("SELECT * FROM usuarios ORDER BY id DESC LIMIT 5");
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ Error al obtener usuarios:", err);
-    res.status(500).json({ message: "Error al obtener usuarios" });
-  }
-});
 
-// ✅ ENDPOINT GET LISTADO DE PRODUCTOS
+// =============================
+//     PRODUCTOS
+// =============================
+
+// GET: obtener todos los productos
 app.get("/productos", async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT * FROM productos"); 
+    const [rows] = await db.query("SELECT * FROM productos");
     res.json(rows);
   } catch (err) {
     console.error("❌ Error al obtener productos:", err);
@@ -106,40 +102,36 @@ app.get("/productos", async (req, res) => {
   }
 });
 
-// ✅ Registrar nuevo producto
+// POST: registrar nuevo producto
 app.post("/productos", async (req, res) => {
-  const { nombre, descripcion, precio, stock, imagen } = req.body;
+  const { nombre, descripcion, precio, stock, imagen, categoria } = req.body;
 
   // Validación básica
   if (!nombre || !precio) {
     return res.status(400).json({ message: "❌ Nombre y precio son obligatorios" });
   }
 
-  // ✅ Validar formato de precio correcto
-  const precioTexto = String(precio); // Asegura que sea string
+  // Validar formato de precio
+  const precioTexto = String(precio);
 
-  // Acepta: 10000, 10000.50
-  // Rechaza: 10.000, $10000, 10,000
   if (!/^\d+(\.\d{1,2})?$/.test(precioTexto)) {
     return res.status(400).json({
       message: "❌ El precio debe ser un número sin puntos ni símbolos. Ejemplo: 10000 o 10000.50"
     });
   }
 
-  // ✅ Si viene con puntos de miles, eliminarlos
-  const precioSinSeparadores = precioTexto.replace(/\./g, '');
+  // Eliminar separadores de miles
+  const precioSinSeparadores = precioTexto.replace(/\./g, "");
   const precioFinal = parseFloat(precioSinSeparadores);
 
   try {
     const [result] = await db.query(
-      "INSERT INTO productos (nombre, descripcion, precio, stock, imagen) VALUES (?, ?, ?, ?, ?)",
-      [nombre, descripcion, precioFinal, stock ?? 0, imagen]
+      "INSERT INTO productos (nombre, descripcion, precio, stock, imagen, categoria) VALUES (?, ?, ?, ?, ?, ?)",
+      [nombre, descripcion, precioFinal, stock ?? 0, imagen, categoria || "General"]
     );
 
-    console.log("✅ Producto registrado con ID:", result.insertId);
-
-    res.status(201).json({ 
-      message: "✅ Producto registrado con éxito",
+    res.status(201).json({
+      message: "Producto registrado con éxito",
       id: result.insertId
     });
 
@@ -149,5 +141,22 @@ app.post("/productos", async (req, res) => {
   }
 });
 
+// DELETE: eliminar producto por id
+app.delete("/productos/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await db.query("DELETE FROM productos WHERE id = ?", [id]);
+    res.json({ message: "Producto eliminado correctamente" });
+  } catch (err) {
+    console.error("❌ Error al eliminar producto:", err);
+    res.status(500).json({ message: "Error al eliminar producto" });
+  }
+});
+
+
+// =============================
+//     INICIAR SERVIDOR
+// =============================
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🚀 Servidor funcionando en el puerto ${PORT}`));
