@@ -265,6 +265,38 @@ app.get("/carrito/:usuario_id", async (req, res) => {
   }
 });
 
+// =============================
+//   CARRITO: Actualizar cantidad
+// =============================
+app.put("/carrito/actualizar", async (req, res) => {
+  const { usuario_id, producto_id, cantidad } = req.body;
+
+  if (!usuario_id || !producto_id || !cantidad) {
+    return res.status(400).json({ message: "Datos incompletos" });
+  }
+
+  if (cantidad < 1) {
+    return res.status(400).json({ message: "La cantidad mínima es 1" });
+  }
+
+  try {
+    const [result] = await db.query(
+      "UPDATE carrito SET cantidad = ? WHERE usuario_id = ? AND producto_id = ?",
+      [cantidad, usuario_id, producto_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Producto no encontrado en carrito" });
+    }
+
+    res.json({ message: "Cantidad actualizada correctamente" });
+
+  } catch (err) {
+    console.error("❌ Error al actualizar cantidad:", err);
+    res.status(500).json({ message: "Error al actualizar cantidad" });
+  }
+});
+
 
 // =============================
 // INICIAR SERVIDOR
