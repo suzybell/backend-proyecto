@@ -39,7 +39,7 @@ app.get("/usuarios", async (req, res) => {
   }
 });
 
-app.post("/login", async (req, res) => {
+aapp.post("/login", async (req, res) => {
   const { usuario, contrasena } = req.body;
 
   if (!usuario || !contrasena) {
@@ -48,20 +48,26 @@ app.post("/login", async (req, res) => {
 
   try {
     const [rows] = await db.query(
-      "SELECT * FROM usuarios WHERE usuario = ? AND contrasena = ?",
+      "SELECT id, usuario, nombre FROM usuarios WHERE usuario = ? AND contrasena = ?",
       [usuario, contrasena]
     );
 
-    if (rows.length > 0) {
-      return res.json({ message: "Login exitoso" });
+    if (rows.length === 0) {
+      return res.status(401).json({ message: "❌ Credenciales inválidas" });
     }
 
-    return res.status(401).json({ message: "❌ Credenciales inválidas" });
+    return res.json({
+      mensaje: "Login exitoso",
+      usuario: rows[0]
+    });
 
   } catch (err) {
-    res.status(500).json({ message: "Error interno del servidor" });
+    console.error("Error en login:", err);
+    res.status(500).json({ message: "Error en servidor" });
   }
 });
+
+
 
 app.post("/register", async (req, res) => {
   const { nombre, usuario, contrasena } = req.body;
