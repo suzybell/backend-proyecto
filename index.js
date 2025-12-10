@@ -1,9 +1,14 @@
+
 require("dotenv").config();
+
+
 const express = require("express");
 const cors = require("cors");
 const db = require("./db");
 
 const app = express();
+
+
 
 // Configurar CORS
 app.use(cors({
@@ -438,6 +443,27 @@ app.post('/checkout', async (req, res) => {
   }
 });
 
+// =============================
+//     ORDENES DEL USUARIO
+// =============================
+app.get("/ordenes/:usuario_id", async (req, res) => {
+  const { usuario_id } = req.params;
+
+  try {
+    const [ordenes] = await db.query(`
+      SELECT * 
+      FROM ordenes
+      WHERE usuario_id = ?
+      ORDER BY fecha DESC
+    `, [usuario_id]);
+
+    res.json(ordenes);
+
+  } catch (error) {
+    console.error("❌ Error al obtener órdenes:", error);
+    res.status(500).json({ message: "Error al obtener órdenes" });
+  }
+});
 
 
 // =============================
