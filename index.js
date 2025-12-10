@@ -365,18 +365,20 @@ app.post('/checkout', async (req, res) => {
   const { usuario_id, direccion_envio, ciudad_envio, telefono_contacto, metodo_pago_id } = req.body;
 
   try {
-    // 1. Obtener carrito del usuario
-    const carrito = await db.query(`
-  SELECT 
-    c.id AS carrito_id,
-    c.producto_id,
-    c.cantidad,
-    p.precio
-  FROM carrito c
-  INNER JOIN productos p ON c.producto_id = p.id
-  WHERE c.usuario_id = ?
-`, [usuario_id]);
 
+    // 1. Obtener carrito del usuario
+    const [carrito] = await db.query(`
+      SELECT 
+        c.id AS carrito_id,
+        c.producto_id,
+        c.cantidad,
+        p.precio
+      FROM carrito c
+      INNER JOIN productos p ON c.producto_id = p.id
+      WHERE c.usuario_id = ?
+    `, [usuario_id]);
+
+    console.log("Carrito recibido en checkout:", carrito);
 
     if (carrito.length === 0) {
       return res.status(400).json({ mensaje: "El carrito está vacío" });
@@ -385,16 +387,13 @@ app.post('/checkout', async (req, res) => {
     // 2. Calcular total
     let total = 0;
 
-carrito.forEach(item => {
-  const precio = Number(item.precio);
-  console.log("Precio obtenido:", precio);
-
-  total += precio * item.cantidad;
-});
-
+    carrito.forEach(item => {
+      const precio = Number(item.precio);
+      total += precio * item.cantidad;
+    });
 
     // 3. Crear orden
-    const orden = await db.query(`
+    const [orden] = await db.query(`
       INSERT INTO ordenes (usuario_id, total, direccion_envio, ciudad_envio, telefono_contacto, metodo_pago_id)
       VALUES (?, ?, ?, ?, ?, ?)
     `, [
@@ -408,7 +407,7 @@ carrito.forEach(item => {
 
     const orden_id = orden.insertId;
 
-    // 4. Insertar detalle de cada producto
+    // 4. Insertar detalles
     for (const item of carrito) {
       await db.query(`
         INSERT INTO detalle_orden (orden_id, producto_id, cantidad, precio_unitario, subtotal)
@@ -439,7 +438,7 @@ carrito.forEach(item => {
   }
 });
 
-console.log("Carrito recibido en checkout:", carrito);
+
 
 // =============================
 // INICIAR SERVIDOR
