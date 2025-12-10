@@ -360,263 +360,74 @@ app.delete("/carrito/vaciar", async (req, res) => {
 //     CHECKOUT & PAGOS
 // =============================
 
-// 1. Obtener métodos de pago disponibles
-app.get("/metodos-pago", async (req, res) => {
-  try {
-    const [rows] = await db.query("SELECT * FROM metodos_pago");
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ Error al obtener métodos de pago:", err);
-    res.status(500).json({ message: "Error al obtener métodos de pago" });
-  }
-});
-
-// 2. Obtener detalles de una orden específica
-app.get("/orden/:id", async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    // Obtener la orden principal
-    const [orden] = await db.query(`
-      SELECT o.*, mp.nombre as metodo_pago_nombre
-      FROM ordenes o
-      LEFT JOIN metodos_pago mp ON o.metodo_pago_id = mp.id
-      WHERE o.id = ?
-    `, [id]);
-
-    if (orden.length === 0) {
-      return res.status(404).json({ message: "Orden no encontrada" });
-    }
-
-    // Obtener los productos de la orden
-    const [detalles] = await db.query(`
-      SELECT 
-        do.*,
-        p.nombre as producto_nombre,
-        p.imagen
-      FROM detalle_orden do
-      JOIN productos p ON do.producto_id = p.id
-      WHERE do.orden_id = ?
-    `, [id]);
-
-    res.json({
-      orden: orden[0],
-      detalles
-    });
-
-  } catch (err) {
-    console.error("❌ Error al obtener orden:", err);
-    res.status(500).json({ message: "Error al obtener orden" });
-  }
-});
-
-// 3. Procesar checkout (VERSIÓN CORREGIDA - SIN EMAIL)
-app.post("/checkout", async (req, res) => {
+app.post('/checkout', async (req, res) => {
   const { usuario_id, direccion_envio, ciudad_envio, telefono_contacto, metodo_pago_id } = req.body;
 
-  // Validar campos obligatorios
-  if (!usuario_id || !direccion_envio || !ciudad_envio || !telefono_contacto || !metodo_pago_id) {
-    return res.status(400).json({ 
-      message: "❌ Todos los campos son obligatorios" 
-    });
-  }
-
-  let connection; // Declarar connection fuera del try para acceso en catch
-
   try {
-    // 1. Obtener conexión de la base de datos
-    connection = await db.getConnection();
-    
-    // 2. Iniciar transacción
-    await connection.beginTransaction();
-
-    // 3. Obtener carrito del usuario con información completa
-    const [carrito] = await connection.query(`
-      SELECT 
-        c.producto_id,
-        c.cantidad,
-        p.nombre,
-        p.precio,
-        p.stock
+    // 1. Obtener carrito del usuario
+    const carrito = await db.query(`
+      SELECT c.id AS carrito_id, c.producto_id, c.cantidad, p.precio
       FROM carrito c
-      JOIN productos p ON c.producto_id = p.id
+      INNER JOIN productos p ON c.producto_id = p.id
       WHERE c.usuario_id = ?
     `, [usuario_id]);
 
-    // 4. Validar que el carrito no esté vacío
     if (carrito.length === 0) {
-      await connection.rollback();
-      connection.release();
-      return res.status(400).json({ 
-        message: "❌ El carrito está vacío" 
-      });
+      return res.status(400).json({ mensaje: "El carrito está vacío" });
     }
 
-    // 5. Validar stock disponible
+    // 2. Calcular total
+    let total = 0;
+    carrito.forEach(item => {
+      total += Number(item.precio) * item.cantidad;
+    });
+
+    // 3. Crear orden
+    const orden = await db.query(`
+      INSERT INTO ordenes (usuario_id, total, direccion_envio, ciudad_envio, telefono_contacto, metodo_pago_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      usuario_id,
+      total,
+      direccion_envio,
+      ciudad_envio,
+      telefono_contacto,
+      metodo_pago_id
+    ]);
+
+    const orden_id = orden.insertId;
+
+    // 4. Insertar detalle de cada producto
     for (const item of carrito) {
-      if (item.cantidad > item.stock) {
-        await connection.rollback();
-        connection.release();
-        return res.status(400).json({ 
-          message: `❌ Stock insuficiente para: ${item.nombre}. Disponible: ${item.stock}` 
-        });
-      }
+      await db.query(`
+        INSERT INTO detalle_orden (orden_id, producto_id, cantidad, precio_unitario, subtotal)
+        VALUES (?, ?, ?, ?, ?)
+      `, [
+        orden_id,
+        item.producto_id,
+        item.cantidad,
+        item.precio,
+        Number(item.precio) * item.cantidad
+      ]);
     }
 
-    // 6. Calcular el total
-    const total = carrito.reduce((sum, item) => {
-      return sum + (parseFloat(item.precio) * item.cantidad);
-    }, 0);
+    // 5. Vaciar carrito
+    await db.query("DELETE FROM carrito WHERE usuario_id = ?", [usuario_id]);
 
-    // 7. Crear la orden principal
-    const [resultOrden] = await connection.query(`
-      INSERT INTO ordenes (
-        usuario_id, 
-        total, 
-        direccion_envio, 
-        ciudad_envio, 
-        telefono_contacto, 
-        metodo_pago_id
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `, [usuario_id, total, direccion_envio, ciudad_envio, telefono_contacto, metodo_pago_id]);
-
-    const ordenId = resultOrden.insertId;
-
-    // 8. Guardar productos en detalle_orden y actualizar stock
-    for (const item of carrito) {
-      const subtotal = parseFloat(item.precio) * item.cantidad;
-      
-      // Insertar en detalle_orden
-      await connection.query(`
-        INSERT INTO detalle_orden (
-          orden_id, 
-          producto_id, 
-          cantidad, 
-          precio_unitario, 
-          subtotal
-        ) VALUES (?, ?, ?, ?, ?)
-      `, [ordenId, item.producto_id, item.cantidad, item.precio, subtotal]);
-
-      // Actualizar stock
-      await connection.query(`
-        UPDATE productos 
-        SET stock = stock - ? 
-        WHERE id = ?
-      `, [item.cantidad, item.producto_id]);
-    }
-
-    // 9. Vaciar el carrito
-    await connection.query('DELETE FROM carrito WHERE usuario_id = ?', [usuario_id]);
-
-    // 10. Confirmar transacción
-    await connection.commit();
-    connection.release();
-
-    // 11. Obtener nombre del usuario (SOLO nombre, NO email)
-    const [usuarios] = await db.query(
-      "SELECT nombre FROM usuarios WHERE id = ?", 
-      [usuario_id]
-    );
-    
-    const usuarioNombre = usuarios[0]?.nombre || 'Cliente';
-
-    // 12. Obtener método de pago
-    const [metodosPago] = await db.query(
-      "SELECT nombre FROM metodos_pago WHERE id = ?", 
-      [metodo_pago_id]
-    );
-    
-    const metodoPagoNombre = metodosPago[0]?.nombre || 'No especificado';
-
-    // 13. MOSTRAR EN CONSOLA (simulación de correo para proyecto académico)
-    console.log("\n" + "=".repeat(60));
-    console.log("🎉 CHECKOUT COMPLETADO - Orden #" + ordenId);
-    console.log("=".repeat(60));
-    console.log("📋 RESUMEN DE LA COMPRA");
-    console.log("👤 Cliente: " + usuarioNombre);
-    console.log("💰 Total: $" + total.toLocaleString('es-CO'));
-    console.log("📍 Dirección: " + direccion_envio + ", " + ciudad_envio);
-    console.log("📞 Teléfono: " + telefono_contacto);
-    console.log("💳 Método de pago: " + metodoPagoNombre);
-    console.log("\n🛒 Productos comprados:");
-    
-    carrito.forEach((item, index) => {
-      console.log(`   ${index + 1}. ${item.nombre} - ${item.cantidad} x $${item.precio.toLocaleString('es-CO')} = $${(item.precio * item.cantidad).toLocaleString('es-CO')}`);
-    });
-    
-    console.log("=".repeat(60));
-    console.log("✅ Para fines académicos: correo simulado exitosamente");
-    console.log("=".repeat(60) + "\n");
-
-    // 14. Responder con éxito
-    res.status(201).json({
-      success: true,
-      message: "✅ Compra realizada exitosamente",
-      orden: {
-        id: ordenId,
-        total: total,
-        fecha: new Date().toISOString(),
-        direccion_envio: direccion_envio,
-        ciudad_envio: ciudad_envio,
-        telefono_contacto: telefono_contacto,
-        metodo_pago: metodoPagoNombre
-      },
-      productos: carrito.map(item => ({
-        id: item.producto_id,
-        nombre: item.nombre,
-        cantidad: item.cantidad,
-        precio_unitario: item.precio,
-        subtotal: item.precio * item.cantidad
-      })),
-      nota: "Correo de confirmación simulado para proyecto académico"
+    // 6. Respuesta final
+    res.json({
+      mensaje: "Compra realizada con éxito",
+      total: total,
+      orden_id: orden_id,
+      estado: "pendiente"
     });
 
-  } catch (err) {
-    console.error("❌ Error en checkout:", err.message);
-    
-    // Revertir cambios si hubo error
-    try {
-      if (connection) {
-        await connection.rollback();
-        connection.release();
-      }
-    } catch (rollbackErr) {
-      console.error("Error en rollback:", rollbackErr.message);
-    }
-    
-    res.status(500).json({ 
-      success: false,
-      message: "Error al procesar la compra",
-      error: err.message 
-    });
+  } catch (error) {
+    console.log("Error en checkout:", error);
+    res.status(500).json({ mensaje: "Error en el proceso de checkout" });
   }
 });
 
-// 4. Obtener órdenes de un usuario
-app.get("/ordenes/usuario/:usuario_id", async (req, res) => {
-  const { usuario_id } = req.params;
-
-  try {
-    const [ordenes] = await db.query(`
-      SELECT 
-        o.*,
-        mp.nombre as metodo_pago_nombre,
-        COUNT(do.id) as total_productos
-      FROM ordenes o
-      LEFT JOIN metodos_pago mp ON o.metodo_pago_id = mp.id
-      LEFT JOIN detalle_orden do ON o.id = do.orden_id
-      WHERE o.usuario_id = ?
-      GROUP BY o.id
-      ORDER BY o.fecha DESC
-    `, [usuario_id]);
-
-    res.json(ordenes);
-
-  } catch (err) {
-    console.error("❌ Error al obtener órdenes:", err);
-    res.status(500).json({ message: "Error al obtener órdenes" });
-  }
-});
 
 // =============================
 // INICIAR SERVIDOR
