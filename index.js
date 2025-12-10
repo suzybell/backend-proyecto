@@ -39,7 +39,7 @@ app.get("/usuarios", async (req, res) => {
   }
 });
 
-aapp.post("/login", async (req, res) => {
+app.post("/login", async (req, res) => {
   const { usuario, contrasena } = req.body;
 
   if (!usuario || !contrasena) {
