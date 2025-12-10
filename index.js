@@ -57,9 +57,13 @@ app.post("/login", async (req, res) => {
     }
 
     return res.json({
-      mensaje: "Login exitoso",
-      usuario: rows[0]
-    });
+  message: "Login exitoso",
+  usuario: {
+    id: rows[0].id,
+    usuario: rows[0].usuario
+  }
+});
+
 
   } catch (err) {
     console.error("Error en login:", err);
