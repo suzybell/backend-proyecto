@@ -360,17 +360,23 @@ app.delete("/carrito/vaciar", async (req, res) => {
 //     CHECKOUT & PAGOS
 // =============================
 
+
 app.post('/checkout', async (req, res) => {
   const { usuario_id, direccion_envio, ciudad_envio, telefono_contacto, metodo_pago_id } = req.body;
 
   try {
     // 1. Obtener carrito del usuario
     const carrito = await db.query(`
-      SELECT c.id AS carrito_id, c.producto_id, c.cantidad, p.precio
-      FROM carrito c
-      INNER JOIN productos p ON c.producto_id = p.id
-      WHERE c.usuario_id = ?
-    `, [usuario_id]);
+  SELECT 
+    c.id AS carrito_id,
+    c.producto_id,
+    c.cantidad,
+    p.precio
+  FROM carrito c
+  INNER JOIN productos p ON c.producto_id = p.id
+  WHERE c.usuario_id = ?
+`, [usuario_id]);
+
 
     if (carrito.length === 0) {
       return res.status(400).json({ mensaje: "El carrito está vacío" });
@@ -378,9 +384,14 @@ app.post('/checkout', async (req, res) => {
 
     // 2. Calcular total
     let total = 0;
-    carrito.forEach(item => {
-      total += Number(item.precio) * item.cantidad;
-    });
+
+carrito.forEach(item => {
+  const precio = Number(item.precio);
+  console.log("Precio obtenido:", precio);
+
+  total += precio * item.cantidad;
+});
+
 
     // 3. Crear orden
     const orden = await db.query(`
@@ -428,6 +439,7 @@ app.post('/checkout', async (req, res) => {
   }
 });
 
+console.log("Carrito recibido en checkout:", carrito);
 
 // =============================
 // INICIAR SERVIDOR
